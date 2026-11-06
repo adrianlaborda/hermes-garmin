@@ -197,6 +197,134 @@ def sleep(dto: Mapping[str, Any]) -> dict:
     })
 
 
+# Sleep-score components: Garmin key -> (output name, how the actual value is read from the DTO)
+_SCORE_PARTS = (
+    ("totalDuration", "duration", "sleepTimeSeconds"),
+    ("deepPercentage", "deep_pct", None),
+    ("lightPercentage", "light_pct", None),
+    ("remPercentage", "rem_pct", None),
+    ("awakeCount", "awakenings", "awakeCount"),
+    ("restlessness", "restlessness", None),
+    ("stress", "sleep_stress", "avgSleepStress"),
+)
+_RATING_ORDER = {"EXCELLENT": 0, "GOOD": 1, "FAIR": 2, "POOR": 3}
+_NOT_SET = (None, "", "NONE", "NOT_AVAILABLE")
+
+STAGE_TIMELINE_NOTE = (
+    "Garmin's Personal API gives stage totals, not a stage timeline, so when each stage happened, time to "
+    "deep sleep and the length of each awakening are not available. awakenings is Garmin's count.")
+
+
+def _score_range(start: Any, end: Any, as_duration: bool) -> Optional[str]:
+    if not isinstance(start, (int, float)) or not isinstance(end, (int, float)):
+        return None
+    if as_duration:
+        return hmm(start) if start == end else f"{hmm(start)}-{hmm(end)}"
+    return f"{start:g}" if start == end else f"{start:g}-{end:g}"
+
+
+def sleep_detail(dto: Mapping[str, Any]) -> dict:
+    """One night's ``DailySleepDTO`` beyond the summary: each sleep-score component with its value,
+    Garmin's rating and optimal range, the components rated below GOOD, respiration range, sleep need,
+    alignment and naps when Garmin sends them."""
+    scores = dto.get("sleepScores") if isinstance(dto.get("sleepScores"), Mapping) else {}
+    parts = []
+    for key, name, source in _SCORE_PARTS:
+        item = scores.get(key)
+        if not isinstance(item, Mapping):
+            continue
+        duration = key == "totalDuration"
+        value = dto.get(source) if source else item.get("value")
+        parts.append(_clean({
+            "component": name,
+            "value": hmm(value) if duration else _num(value, 1) if isinstance(value, float) else value,
+            "unit": "%" if name.endswith("_pct") else None,
+            "rating": item.get("qualifierKey"),
+            "optimal": _score_range(item.get("optimalStart"), item.get("optimalEnd"), duration),
+        }))
+    weak = sorted((p for p in parts if _RATING_ORDER.get(str(p.get("rating")), -1) >= 2),
+                  key=lambda p: -_RATING_ORDER[p["rating"]])
+    need = dto.get("sleepNeed") if isinstance(dto.get("sleepNeed"), Mapping) else {}
+    alignment = dto.get("sleepAlignment") if isinstance(dto.get("sleepAlignment"), Mapping) else {}
+    naps = [_clean({"start_local": _nap_start(n), "duration_hmm": hmm(n.get("napTimeSec")),
+                    "feedback": n.get("napFeedback") if n.get("napFeedback") not in _NOT_SET else None})
+            for n in dto.get("dailyNapDTOS") or [] if isinstance(n, Mapping)]
+    insight = dto.get("sleepScorePersonalizedInsight")
+    return _clean({
+        "score_components": parts,
+        "below_good": [p["component"] for p in weak],
+        "respiration_brpm": _clean({"avg": _num(dto.get("averageRespirationValue"), 1),
+                                    "lowest": _num(dto.get("lowestRespirationValue"), 1),
+                                    "highest": _num(dto.get("highestRespirationValue"), 1)}),
+        "avg_sleep_stress": _num(dto.get("avgSleepStress")),
+        "unmeasurable_hmm": hmm(dto.get("unmeasurableSleepSeconds")) if dto.get("unmeasurableSleepSeconds") else None,
+        "personalized_insight": insight if insight not in _NOT_SET else None,
+        "sleep_need": _clean({
+            "baseline_hmm": hmm((need.get("baseline") or 0) * 60) if need.get("baseline") else None,
+            "tonight_hmm": hmm((need.get("actual") or 0) * 60) if need.get("actual") else None,
+            "feedback": need.get("feedback") if need.get("feedback") not in _NOT_SET else None,
+        }),
+        "alignment": alignment.get("status") if alignment.get("status") not in _NOT_SET else None,
+        "naps": [n for n in naps if n],
+        "spo2_events_below_threshold": dto.get("numberOfEventsBelowThreshold"),
+        "window": dto.get("sleepWindowConfirmationType"),
+        "timeline_note": STAGE_TIMELINE_NOTE,
+    })
+
+
+def _nap_start(nap: Mapping[str, Any]) -> Optional[str]:
+    """A nap's local start: its GMT time shifted by ``napStartTimeOffset`` (minutes)."""
+    start = _parse(nap.get("napStartTimestampGMT"))
+    offset = nap.get("napStartTimeOffset")
+    if start is None or not isinstance(offset, (int, float)):
+        return None
+    return (start + timedelta(minutes=offset)).strftime("%Y-%m-%dT%H:%M")
+
+
+def hrv_night(chart: Mapping[str, Any], bucket_minutes: int = 0) -> dict:
+    """``HrvChartDTO`` readings (every 5 minutes) as ``bucket_minutes`` averages in local time, the first vs
+    second half of the night, and the lowest and highest bucket."""
+    readings = []
+    for item in chart.get("hrvReadings") or []:
+        if not isinstance(item, Mapping):
+            continue
+        moment, value = _parse(item.get("readingTimeLocal")), item.get("hrvValue")
+        if moment is not None and isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+            readings.append((moment, float(value)))
+    readings.sort()
+    if not readings:
+        return {"note": "Garmin returned no overnight HRV readings for this night."}
+    if not bucket_minutes:  # 30-minute buckets keep a normal night under ~20 rows
+        bucket_minutes = 30 if readings[-1][0] - readings[0][0] <= timedelta(hours=12) else 60
+    buckets: dict[datetime, list[float]] = {}
+    for moment, value in readings:
+        start = moment.replace(minute=moment.minute - moment.minute % bucket_minutes, second=0, microsecond=0)
+        buckets.setdefault(start, []).append(value)
+    rows = [(start, sum(v) / len(v)) for start, v in sorted(buckets.items())]
+    half = len(readings) // 2
+    first = [v for _m, v in readings[:half]] or [readings[0][1]]
+    second = [v for _m, v in readings[half:]]
+
+    def span(start: datetime) -> str:
+        return f"{start:%H:%M}-{start + timedelta(minutes=bucket_minutes):%H:%M}"
+    low = min(rows, key=lambda r: r[1])
+    high = max(rows, key=lambda r: r[1])
+    first_avg, second_avg = sum(first) / len(first), sum(second) / len(second)
+    return _clean({
+        "readings": len(readings),
+        "window_local": f"{readings[0][0]:%H:%M}-{readings[-1][0]:%H:%M}",
+        "bucket_minutes": bucket_minutes,
+        "buckets_avg_ms": [[f"{start:%H:%M}", int(round(avg))] for start, avg in rows],
+        "first_half_avg_ms": int(round(first_avg)),
+        "second_half_avg_ms": int(round(second_avg)),
+        "second_vs_first_half_pct": int(round(100 * (second_avg - first_avg) / first_avg)) if first_avg else None,
+        "lowest_bucket": {"time": span(low[0]), "avg_ms": int(round(low[1]))},
+        "highest_bucket": {"time": span(high[0]), "avg_ms": int(round(high[1]))},
+        "min_reading_ms": int(min(v for _m, v in readings)),
+        "max_reading_ms": int(max(v for _m, v in readings)),
+    })
+
+
 def sleep_score(dto: Mapping[str, Any]) -> Optional[int]:
     return _num(_get(dto, "sleepScores", "overall", "value"))
 

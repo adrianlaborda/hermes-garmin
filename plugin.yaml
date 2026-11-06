@@ -6,8 +6,9 @@ author: adrianlaborda
 license: MIT
 homepage: https://github.com/adrianlaborda/hermes-garmin
 description: >-
-  Read-only Garmin Connect data (sleep, HRV, Body Battery, stress, steps, heart rate, activities, weight)
-  through Garmin's official Personal API, with deterministic baselines and trend flags. Unofficial.
+  Read-only Garmin Connect data (sleep, HRV, Body Battery, stress, steps, heart rate, activities, heart-rate
+  zones, fitness age, weight) through Garmin's official Personal API, with deterministic baselines, training
+  intensity and trend flags. Unofficial.
 requires_hermes: ">=0.22.2"
 # Same variable as config_schema.api_key: requires_env makes `hermes plugins install` prompt for it and
 # Desktop's install toast flag it; it does not block loading or enabling. Desktop users enter it in the
@@ -32,6 +33,8 @@ provides_tools:
   - garmin_activity_fit
   - garmin_body
   - garmin_trends
+  - garmin_training_load
+  - garmin_fitness_age
 provides_hooks:
   - pre_llm_call
 config_schema:

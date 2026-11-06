@@ -34,7 +34,7 @@ def register(ctx) -> None:
     ctx.register_command("garmin", handler=handle, args_hint="[status|today|help]",
                          description="Garmin Connect: status, today's overview, help")
     ctx.register_skill("garmin", SKILL_DIR / "SKILL.md",
-                       description="Use and interpret Garmin sleep, HRV, Body Battery, stress and training data")
+                       description="Use and interpret Garmin sleep, HRV, Body Battery, stress, training intensity and fitness age data")
     ctx.register_automation_blueprint(
         "morning-readiness",
         title="Morning readiness brief",

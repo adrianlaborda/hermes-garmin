@@ -1,6 +1,6 @@
 ---
 name: garmin
-description: Answer questions about the user's sleep, recovery, HRV, Body Battery, stress, steps, heart rate, workouts and weight from their Garmin watch, and write readiness briefs. Use when the user asks how they slept, whether they are recovered or should train, about a run or ride, or about trends in their health metrics.
+description: Answer questions about the user's sleep, recovery, HRV, Body Battery, stress, steps, heart rate, workouts, training intensity by heart-rate zone, fitness age and weight from their Garmin watch, and write readiness briefs. Use when the user asks how they slept, whether they are recovered or should train, about a run or ride, or about trends in their health metrics.
 ---
 
 # Garmin Connect data
@@ -15,8 +15,9 @@ it than the question needs, and never share it with third parties or other tools
 |---|---|
 | "How am I today?", "Did I sleep well?", "Should I train?" | `garmin_today`, then `garmin_trends` |
 | Sleep over several nights | `garmin_sleep` with `days` |
+| "Why did I sleep badly?", one night explained | `garmin_sleep` with `detail: true`, then `garmin_hrv` with `detail: true` (same `date`) |
 | Recovery, fatigue, "am I overdoing it?", progress over weeks | `garmin_trends` (default 28 days) |
-| HRV status or values | `garmin_hrv` |
+| HRV status or values | `garmin_hrv` (`detail: true` for one night's curve) |
 | Energy through the day | `garmin_body_battery` (one day includes the events that moved it) |
 | Stress | `garmin_stress` |
 | Steps, activity level | `garmin_steps` |
@@ -24,6 +25,9 @@ it than the question needs, and never share it with third parties or other tools
 | "My last run", workouts in a period, by type or name | `garmin_activities` (`activity_type` such as `running` or `strength_training`), then `garmin_activity` with its `id` |
 | Laps or second-by-second analysis | `garmin_activity_fit` (gives a local ZIP path for other tools) |
 | Weight, body composition, water intake | `garmin_body` |
+| "How hard did I train this week?", intensity by heart-rate zone, zone 2 or polarized training, a jump in load | `garmin_training_load` (`days`, default 7) |
+| Time in zones of one workout | `garmin_activity` (`hr_zones`) |
+| "What's my fitness age?", "how fit am I for my age?", what would improve it | `garmin_fitness_age` |
 
 Dates are the user's local calendar days. A night of sleep is filed under the morning the user woke
 up, so "last night" is today's date. Data appears after the watch syncs; early in the morning today's
@@ -56,8 +60,26 @@ Prefer the summaries. Ask for `raw: true` only when a field you need is missing;
   wake shows how well sleep recharged; "charged" during sleep below about 30 suggests poor recovery.
 - **Stress** (0-100) is physiological, derived from heart rate variability while awake, not
   emotional stress: 0-25 rest, 26-50 low, 51-75 medium, 76-100 high. Exercise is excluded.
+- **One night in detail** (`garmin_sleep` `detail: true`): `below_good` names the score components Garmin
+  rated FAIR or POOR; quote them with their value and optimal range ("deep sleep 12%, Garmin's optimal
+  16-33%"). Garmin gives stage totals only, no timeline: do not say when deep sleep happened, how long it
+  took to reach it or how long each awakening lasted. With `garmin_hrv` `detail: true`, a second half of
+  the night well above the first is a common recovery pattern; a curve that stays low, or dips late, often
+  goes with a late meal, alcohol, illness or a hard late session. Offer these as possibilities, not causes.
 - **Sleep score** (0-100) combines duration, stages and restlessness. Adults usually need 7-9 h.
   Deep and REM shares vary a lot between people and nights; avoid over-reading single nights.
+- **Heart-rate zones** come from the user's own Garmin zone settings (`zones.method`: lactate threshold,
+  max HR or HR reserve); quote the bpm ranges the tools give, not textbook percentages. Zones 1-2 are easy
+  aerobic work, zone 3 moderate, zones 4-5 hard. Many endurance plans keep roughly 75-80% of time easy;
+  that is a common guideline, not a rule, and strength or HIIT sessions are naturally different.
+- **Training load** (`garmin_training_load`): quote its flags. A flag with `caution: true` (zone 4-5 time or
+  total time well above the 4-week average) is a sudden jump; suggest building gradually and watching
+  `garmin_trends` (HRV, resting HR) over the next days rather than calling it harmful. A drop can be a planned
+  easy week; ask before assuming. Time in zone only counts recorded activities with heart rate.
+- **Fitness age** is Garmin's estimate from vigorous activity, resting heart rate and BMI or body fat, not a
+  medical age. Report it against the user's age (`reading`), and use `to_improve` (ordered by Garmin's
+  priority) for what would lower it; mention stale inputs (`stale_note`), for example an old weight entry.
+  Be tactful with BMI and body fat: mention them only when relevant or asked.
 - **Training effect** (0-5) rates the aerobic and anaerobic load of one activity; training load is
   its overall cost.
 
@@ -70,7 +92,7 @@ or "good day for the planned intervals"). Base the suggestion on the flags, not 
 
 ## Safety
 
-- This is not medical advice and Garmin's metrics are estimates. Do not diagnose.
+- This is not medical advice and Garmin's metrics (including fitness age and zones) are estimates. Do not diagnose.
 - If the data shows something that could be a health issue (very high or very low resting heart rate,
   repeated low SpO2 during sleep, sudden large changes that persist), say so plainly and suggest
   talking to a doctor, without alarming the user.

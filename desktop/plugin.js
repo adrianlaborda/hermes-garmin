@@ -445,6 +445,42 @@ function LastActivity({ activity }) {
   })
 }
 
+function FitnessAge({ age }) {
+  if (!age) return null
+  return jsxs('section', {
+    className: 'gc-section',
+    'aria-labelledby': 'gc-age-title',
+    children: [
+      jsxs('h2', {
+        id: 'gc-age-title',
+        className: 'gc-section-title',
+        children: ['Fitness age', jsx('span', { className: 'gc-section-note', children: 'Garmin estimate' })]
+      }),
+      jsxs('div', {
+        className: 'gc-age',
+        'data-tone': age.tone,
+        'aria-label': `Fitness age ${age.display} ${age.unit}${age.badge_label ? `, ${age.badge_label}` : ''}${age.detail ? `, ${age.detail}` : ''}`,
+        children: [
+          jsxs('div', {
+            className: 'gc-card-value',
+            children: [
+              jsx('span', { className: 'gc-value', children: age.display }),
+              jsx('span', { className: 'gc-unit', children: age.unit })
+            ]
+          }),
+          jsxs('div', {
+            className: 'gc-age-text',
+            children: [
+              age.badge_label && jsx('p', { className: 'gc-age-vs', children: age.badge_label }),
+              age.detail && jsx('p', { className: 'gc-card-detail', children: age.detail })
+            ]
+          })
+        ]
+      })
+    ]
+  })
+}
+
 function Header({ date, updatedAt, syncedAt, fetching, onRefresh }) {
   // The watch's last sync matters more than the panel's fetch time: today's totals stop there.
   const updated = syncedAt ? `watch synced ${whenText(syncedAt).replace(/^Today, /, '').replace(/^Yesterday/, 'yesterday')}` : updatedAt ? `updated ${clockText(updatedAt)}` : ''
@@ -700,7 +736,10 @@ export function GarminPanel() {
           className: 'gc-columns',
           children: [
             jsx(Signals, { signals: data.signals || [], days: data.window_days || DAYS }),
-            jsx(LastActivity, { activity: data.last_activity })
+            jsxs('div', {
+              className: 'gc-side',
+              children: [jsx(LastActivity, { activity: data.last_activity }), jsx(FitnessAge, { age: data.fitness_age })]
+            })
           ]
         }),
         data.freshness_note &&
@@ -802,6 +841,12 @@ const CSS = `
 .gc-activity-title{flex:1;min-width:0}
 .gc-activity-name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .gc-activity-when{font-size:12px;color:var(--ui-text-tertiary)}
+.gc-side{display:flex;flex-direction:column;gap:16px;min-width:0}
+.gc-age{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border:1px solid var(--gc-line);border-radius:10px;background:var(--ui-bg-card,transparent)}
+.gc-age .gc-card-value{margin-top:0;flex:none}
+.gc-age-text{flex:1;min-width:0}
+.gc-age-vs{font-weight:500;overflow-wrap:anywhere}
+.gc-age[data-tone=good] .gc-age-vs{color:var(--gc-good)}
 .gc-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 10px;margin:0}
 .gc-stat{min-width:0}
 .gc-stat dt{font-size:10.5px;color:var(--ui-text-tertiary)}

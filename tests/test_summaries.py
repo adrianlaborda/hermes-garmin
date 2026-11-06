@@ -148,3 +148,40 @@ def test_activity_detail():
     assert detail["splits"] == [{"type": "INTERVAL_ACTIVE", "count": 1, "distance_km": 10.02,
                                  "duration": "0:52:00"}]
     assert "40.41" not in json.dumps(detail)
+
+
+# -- single-night detail ----------------------------------------------------------------------------
+
+def test_sleep_detail_components_and_weak_points():
+    night = fixture("daily_sleep")[0]
+    night["sleepScores"]["deepPercentage"].update(value=12, qualifierKey="POOR")
+    night["sleepScores"]["stress"]["qualifierKey"] = "FAIR"
+    night["sleepNeed"] = {"baseline": 480, "actual": 510, "feedback": "INCREASED"}
+    night["dailyNapDTOS"] = [{"napTimeSec": 1500, "napStartTimestampGMT": "2026-11-06T13:10:00.0",
+                              "napStartTimeOffset": 60, "napFeedback": "NONE"}]
+    out = s.sleep_detail(night)
+    parts = {p["component"]: p for p in out["score_components"]}
+    assert parts["duration"] == {"component": "duration", "value": "7:05", "rating": "GOOD", "optimal": "8:00"}
+    assert parts["deep_pct"] == {"component": "deep_pct", "value": 12, "unit": "%", "rating": "POOR",
+                                 "optimal": "16-33"}
+    assert parts["awakenings"]["value"] == 2 and parts["awakenings"]["optimal"] == "0-1"
+    assert parts["sleep_stress"]["value"] == 18.0 and "value" not in parts["restlessness"]
+    assert out["below_good"] == ["deep_pct", "sleep_stress"]
+    assert out["respiration_brpm"] == {"avg": 14.2, "lowest": 10.0, "highest": 18.0}
+    assert out["sleep_need"] == {"baseline_hmm": "8:00", "tonight_hmm": "8:30", "feedback": "INCREASED"}
+    assert out["naps"] == [{"start_local": "2026-11-06T14:10", "duration_hmm": "0:25"}]
+    assert "personalized_insight" not in out and "stage timeline" in out["timeline_note"]
+
+
+def test_hrv_night_buckets_halves_and_extremes():
+    out = s.hrv_night(fixture("hrv_night"))
+    assert out["readings"] == 90 and out["window_local"] == "23:30-06:55" and out["bucket_minutes"] == 30
+    assert len(out["buckets_avg_ms"]) == 15 and out["buckets_avg_ms"][0] == ["23:30", 42]
+    assert (out["first_half_avg_ms"], out["second_half_avg_ms"], out["second_vs_first_half_pct"]) == (42, 57, 35)
+    assert out["lowest_bucket"]["time"] == "23:30-00:00"
+    assert out["highest_bucket"] == {"time": "03:30-04:00", "avg_ms": 58}
+    assert (out["min_reading_ms"], out["max_reading_ms"]) == (40, 60)
+    assert "note" in s.hrv_night({"hrvReadings": []})
+    long = {"hrvReadings": [{"hrvValue": 50, "readingTimeLocal": f"2026-11-0{5 + h // 24}T{h % 24:02d}:00:00.0"}
+                            for h in range(14)]}
+    assert s.hrv_night(long)["bucket_minutes"] == 60

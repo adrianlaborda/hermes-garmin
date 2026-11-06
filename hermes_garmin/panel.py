@@ -14,9 +14,9 @@ from functools import wraps
 from statistics import mean
 from typing import Any, Callable, Optional
 
-from . import __version__, reports, summaries, trends
-from .client import (KEY_ENV, KEY_PAGE, AuthError, GarminError, NotConfiguredError, RateLimitedError,
-                     jwt_expiry)
+from . import __version__, endpoints, reports, summaries, training, trends
+from .client import (KEY_ENV, KEY_PAGE, AuthError, GarminError, NotConfiguredError, NotFoundError,
+                     RateLimitedError, jwt_expiry)
 from .runtime import PLUGIN_ID, Runtime
 
 logger = logging.getLogger(__name__)
@@ -179,6 +179,7 @@ def overview(rt: Runtime, days: Any = DEFAULT_DAYS, *, fresh: bool = False) -> d
     fetched, failed = reports._gather({
         "today": lambda: reports.today(client, as_of, **kw),
         "series": lambda: reports.collect_series(client, as_of - timedelta(days=days - 1), as_of, **kw),
+        "fitness_age": lambda: _fitness_age_dto(client, as_of, **kw),
     })
     day_report = fetched.get("today") or {"date": as_of.isoformat()}
     collected, series_failed = fetched.get("series") or ({name: [] for name in trends.METRICS}, {})
@@ -194,6 +195,9 @@ def overview(rt: Runtime, days: Any = DEFAULT_DAYS, *, fresh: bool = False) -> d
         signals=signals(report),
         last_activity=last_activity(day_report.get("latest_activity")),
     )
+    age = fitness_age_card(fetched.get("fitness_age"))
+    if age:
+        out["fitness_age"] = age
     for key in ("synced_local", "sync_age_hours", "freshness_note", "day_totals_as_of", "day_totals_note"):
         if day_report.get(key) is not None:
             out[key] = day_report[key]
@@ -370,6 +374,37 @@ def signals(report: dict) -> list[dict]:
         tone = {"favourable": "good", "unfavourable": "bad"}.get(flag.get("verdict"), "neutral")
         out.append({"metric": name, "kind": flag.get("kind"), "tone": tone, "headline": headline,
                     "detail": detail, "text": flag.get("text", "")})
+    return out
+
+
+def _fitness_age_dto(client, day: date, **kw: Any) -> Optional[dict]:
+    try:
+        return endpoints.fitness_age(client, day, **kw)
+    except NotFoundError:  # an account without fitness age: nothing to show, not a failure
+        return None
+
+
+def fitness_age_card(dto: Optional[dict]) -> Optional[dict]:
+    """The panel's compact fitness-age row: ``35.4`` years, ``4.6 younger than your age of 40``."""
+    summary = training.fitness_age(dto) if dto else {}
+    value, age = summary.get("fitness_age"), summary.get("chronological_age")
+    if value is None:
+        return None
+    out: dict = {"value": value, "display": f"{value:.1f}", "unit": "years", "tone": "neutral"}
+    if age is not None:
+        delta = summary.get("years_vs_age") or 0.0
+        out["age"] = age
+        out["badge"] = f"{'−' if delta < 0 else '+'}{abs(delta):.1f}" if abs(delta) >= 0.1 else "±0"
+        out["badge_label"] = (f"{abs(delta):.1f} years {'younger' if delta < 0 else 'older'} than your age of {age}"
+                              if abs(delta) >= 0.1 else f"the same as your age of {age}")
+        out["tone"] = "good" if delta <= -1 else "neutral"
+    bits = []
+    if summary.get("achievable_fitness_age") is not None:
+        bits.append(f"achievable {summary['achievable_fitness_age']:.1f}")
+    change = summary.get("change_since_previous")
+    if change:
+        bits.append(f"{'−' if change < 0 else '+'}{abs(change):.1f} since the last update")
+    out["detail"] = " · ".join(bits)
     return out
 
 

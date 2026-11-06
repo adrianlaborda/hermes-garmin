@@ -17,7 +17,21 @@ First release.
   `GARMIN_PERSONAL_API_KEY`). No restart is needed after saving it. The installer also prompts for it.
 - Read-only tools: `garmin_today`, `garmin_sleep`, `garmin_hrv`, `garmin_body_battery`, `garmin_stress`,
   `garmin_steps`, `garmin_heart_rate`, `garmin_activities`, `garmin_activity`, `garmin_activity_fit`,
-  `garmin_body` and `garmin_trends`. They are hidden until the key is set.
+  `garmin_body`, `garmin_trends`, `garmin_training_load` and `garmin_fitness_age`. They are hidden until the
+  key is set.
+- `garmin_training_load`: minutes in heart-rate zones 1-5 over the last N days (7 by default) with each zone's
+  bpm range, easy/moderate/hard shares, time per activity type and intensity minutes against the weekly goal,
+  compared with the weekly average of the 4 weeks before, and deterministic flags ("Zone 4-5 time 2.1x your
+  4-week weekly average", "92% of time in zones 1-2"). Heart-rate zones are cached for 12 hours.
+- `garmin_activity` adds time in each heart-rate zone (minutes, % and bpm range) from the activity list, since
+  the detail endpoint does not carry it.
+- `garmin_fitness_age`: Garmin's fitness age against the user's age, previous and achievable fitness age, and
+  each input (vigorous days and minutes per week, resting heart rate, BMI or body fat) against Garmin's target,
+  ordered by priority. Accepts the single object the live API returns as well as the documented array.
+- `garmin_sleep` and `garmin_hrv` take `detail: true` for one night. Sleep: each sleep-score component with its
+  value, Garmin's rating and optimal range, the components rated below GOOD, the respiration range, and sleep
+  need and naps when present (Garmin's Personal API has no stage timeline). HRV: 30-minute averages of the
+  5-minute overnight readings, first vs second half of the night, and the lowest and highest window.
 - `garmin_trends`: baselines, z-scores, 7-day vs 28-day changes and plain-language flags for HRV, resting heart
   rate, sleep, sleep score, stress, Body Battery, steps and intensity minutes. Today's running totals are compared
   up to yesterday.
@@ -39,7 +53,7 @@ First release.
 - Hermes Desktop panel (**Garmin**): a readiness strip of sleep, overnight HRV, Body Battery, stress, resting
   heart rate and steps, each with a 28-day sparkline placed by date, a badge against your baseline for the
   overnight metrics and today's value so far for running totals; trend signals in plain words; the last activity;
-  an **Ask Hermes for my readiness brief** button; setup steps with an **Add your API key** button when no key is
+  fitness age against your age; an **Ask Hermes for my readiness brief** button; setup steps with an **Add your API key** button when no key is
   set or it was rejected; and a warning when the key expires within 7 days. Also a full page and two command
   palette entries.
 - Read-only backend routes for the panel under `/api/plugins/garmin-connect/`: `overview`, `today`, `trends`,

@@ -7,8 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 
-from . import endpoints, summaries, trends
-from .client import AuthError, GarminClient, GarminError, NotConfiguredError
+from . import endpoints, summaries, training, trends
+from .client import ApiError, AuthError, GarminClient, GarminError, NotConfiguredError
 
 # Running totals for the current day are incomplete, so trends compare them up to yesterday only.
 CUMULATIVE_METRICS = {"steps", "intensity_minutes", "avg_stress", "body_battery_high"}
@@ -19,6 +19,8 @@ DAY_TTL_S = 60.0
 # A newer end of wellness data than the daily summary's own sync means a lagging snapshot only past
 # this gap: the data is filed in quarter hours.
 SNAPSHOT_LAG_MIN = 15
+# Activities read for a training-load window plus its 4-week baseline (at most 56 days).
+LOAD_ACTIVITY_LIMIT = 300
 
 
 def _now() -> datetime:
@@ -325,6 +327,56 @@ def trend_report(client: GarminClient, as_of: date, days: int, *, flag_pct: floa
     missing = [name for name, points in series.items() if not points]
     if missing:
         report["no_data"] = missing
+    if failed:
+        report["unavailable"] = failed
+    return report
+
+
+def activity_zones(client: GarminClient, detail: dict, **kw: Any) -> dict:
+    """``{"hr_zones": ...}`` for an activity detail DTO, or ``{"hr_zones_note": ...}``.
+
+    The detail endpoint has no time in zone, so the activity is looked up in the list for its day
+    (one day either side, in case Garmin files it under another zone's date)."""
+    activity_id = detail.get("activityId")
+    summary = detail.get("summaryDTO") if isinstance(detail.get("summaryDTO"), dict) else {}
+    day = summaries.parse_iso_day(summary.get("startTimeLocal"))
+    if activity_id is None or day is None:
+        return {}
+    fetched, failed = _gather({
+        "list": lambda: endpoints.activities(client, limit=endpoints.ACTIVITY_PAGE, start=day - timedelta(days=1),
+                                             end=day + timedelta(days=1), **kw),
+        "zones": lambda: endpoints.heart_rate_zones(client),
+    })
+    if "list" in failed:
+        return {"hr_zones_note": f"Time in zone unavailable: {failed['list']}"}
+    item = next((a for a in fetched.get("list") or [] if isinstance(a, dict) and a.get("activityId") == activity_id),
+                None)
+    if item is None:
+        return {"hr_zones_note": "Garmin's activity list did not include this activity, so time in zone is unknown."}
+    type_key = summaries._get(detail, "activityTypeDTO", "typeKey")
+    zones = training.activity_zones(item, training.zones_for(training.zone_sets(fetched.get("zones") or []), type_key))
+    if zones is None:
+        return {"hr_zones_note": "No heart-rate zone data for this activity (no heart rate recorded)."}
+    return {"hr_zones": zones}
+
+
+def training_load(client: GarminClient, as_of: date, days: int = 7, *, ends_today: bool = True,
+                  **kw: Any) -> dict:
+    """Heart-rate zone distribution over ``days`` days ending ``as_of`` against the 4 weeks before."""
+    start = as_of - timedelta(days=days - 1 + training.BASELINE_DAYS)
+    fetched, failed = _gather({
+        "activities": lambda: endpoints.activities(client, limit=LOAD_ACTIVITY_LIMIT, start=start, end=as_of, **kw),
+        "daily": lambda: endpoints.daily_summaries(client, start, as_of, **kw),
+        "zones": lambda: endpoints.heart_rate_zones(client),
+    })
+    if "activities" in failed:
+        raise ApiError(failed["activities"])
+    activities = fetched.get("activities") or []
+    report = training.analyze_load(activities, fetched.get("daily") or [], fetched.get("zones") or [], as_of, days,
+                                   ends_today=ends_today)
+    if len(activities) >= LOAD_ACTIVITY_LIMIT:
+        report["limit_note"] = (f"Read the newest {LOAD_ACTIVITY_LIMIT} activities only; the oldest part of the "
+                                "baseline may be incomplete.")
     if failed:
         report["unavailable"] = failed
     return report

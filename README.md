@@ -1,12 +1,13 @@
 # Garmin Connect for Hermes
 
 Your Garmin data in [Hermes Agent](https://github.com/NousResearch/hermes-agent): sleep, HRV, Body Battery,
-stress, steps, heart rate, activities and weight, read through Garmin's official
+stress, steps, heart rate, activities, heart-rate zones, fitness age and weight, read through Garmin's official
 [Personal API](https://developer.garmin.com/gc-developer-program/personal/personal-api/). No password, no
 scraping, no third-party relay: Hermes talks to Garmin directly with a key you create in Garmin Connect.
 
 On top of the raw numbers it computes your own baselines, so Hermes can say "overnight HRV 18% below your
-baseline, resting heart rate up 6 bpm" instead of guessing from one night.
+baseline, resting heart rate up 6 bpm" or "zone 4-5 time 2.1x your 4-week average" instead of guessing from one
+night.
 
 > **Unofficial.** This is a community project. It is not affiliated with, endorsed by or supported by Garmin
 > or Nous Research. Garmin and Garmin Connect are trademarks of Garmin Ltd. or its subsidiaries.
@@ -80,17 +81,19 @@ All tools are read-only. Dates are your local calendar days and default to today
 | Tool | What it returns |
 |---|---|
 | `garmin_today` | One-call overview: last night's sleep and score, overnight HRV and status, Body Battery (now, at wake, high/low), stress, steps vs goal, resting heart rate, latest activity, and when the watch last synced |
-| `garmin_sleep` | Per night: duration, stages, score, bedtime and wake time, heart rate, respiration, SpO2 |
-| `garmin_hrv` | Overnight HRV (ms), Garmin's HRV status (which rates the 7-day average) and where last night falls against your balanced range |
+| `garmin_sleep` | Per night: duration, stages, score, bedtime and wake time, heart rate, respiration, SpO2. `detail: true` explains one night: each score component (duration, deep/light/REM %, awakenings, restlessness, sleep stress) with Garmin's rating and optimal range, the respiration range, sleep need and naps when present |
+| `garmin_hrv` | Overnight HRV (ms), Garmin's HRV status (which rates the 7-day average) and where last night falls against your balanced range. `detail: true` adds one night's curve: 30-minute averages, first vs second half, lowest and highest window |
 | `garmin_body_battery` | Charged, drained, high, low and latest (and the events that moved it, when Garmin includes them) |
 | `garmin_stress` | Average stress and time in high/medium/low/rest stress |
 | `garmin_steps` | Steps, goal and distance, with totals for ranges |
 | `garmin_heart_rate` | Resting/min/max, 7-day resting average, optional hourly means |
 | `garmin_activities` | Search and list activities by date, type or text; strength workouts include sets, reps and exercises |
-| `garmin_activity` | One activity in detail: pace, HR, cadence, power, running dynamics, training effect and load, stamina, splits |
+| `garmin_activity` | One activity in detail: pace, HR, cadence, power, running dynamics, training effect and load, stamina, splits, and minutes and % in each heart-rate zone with its bpm range |
 | `garmin_activity_fit` | Downloads an activity's original file (ZIP with the `.fit`) and returns the local path |
 | `garmin_body` | Weight and body composition, water intake |
 | `garmin_trends` | Baselines and flags for HRV, resting HR, sleep, sleep score, stress, Body Battery, steps and intensity minutes |
+| `garmin_training_load` | Time in heart-rate zones 1-5 over the last N days (7 by default) against your weekly average of the 4 weeks before, easy/moderate/hard shares, time per activity type, intensity minutes vs the weekly goal, and flags |
+| `garmin_fitness_age` | Garmin's fitness age vs your age, previous and achievable fitness age, and its inputs (vigorous days and minutes per week, resting HR, BMI or body fat) against Garmin's targets, most effective first |
 
 Responses are compact summaries made for a model to read: units in the field names (`_bpm`, `_km`, `_ms`),
 durations as `h:mm`, local times, and no GPS coordinates, profile or social fields. Every data tool takes
@@ -111,6 +114,28 @@ you (|z| of at least 1), and each flag says whether the direction is favourable:
 The arithmetic is deterministic and runs in the plugin, so the model interprets numbers instead of estimating
 them. Today's running totals (steps, stress, intensity minutes) are compared up to yesterday, so a morning's
 low step count never reads as a decline.
+
+### Training intensity
+
+`garmin_training_load` is a separate tool rather than part of `garmin_trends`: trends compares daily recovery
+metrics with a per-day baseline, while intensity is a sum over activities in a period, read from another
+endpoint (the activity list) with its own baseline. Keeping them apart keeps `garmin_trends` fast and lets the
+model call each for its own question.
+
+It sums Garmin's time in heart-rate zones for every activity started in the window and compares it with the
+weekly average of the 28 days before (a 14-day window is scaled to a weekly rate). The zone bounds come from your
+Garmin heart-rate zone settings (cached for 12 hours). Flags are deterministic:
+
+- zone 4-5 time at least 1.5x or at most 0.5x your 4-week weekly average (that average must be at least
+  10 min/week), or at least 20 min/week of zone 4-5 work over a baseline with almost none;
+- all time in zones at least 1.3x or at most 0.7x the average (that average must be at least 60 min/week);
+- with at least 30 minutes in zones: 90% or more in zones 1-2, 40% or more in zone 3, or 25% or more in zones 4-5;
+- for 7-day windows, intensity minutes (moderate + 2 x vigorous, as Garmin counts them) against your weekly goal.
+
+```json
+{"kind": "z4_z5_vs_baseline", "direction": "up", "caution": true,
+ "text": "Zone 4-5 time 2.1x your 4-week weekly average (32 min this week vs 15 min/week)"}
+```
 
 ### Daily context (optional)
 
@@ -173,6 +198,8 @@ one look at today's readiness next to your chat.
 - **Sync time:** the header shows when the watch last synced. When that is more than 2 hours ago, the stress and
   steps cards say "as of HH:MM sync" and a note suggests syncing, so a low step count is not read as inactivity.
 - **Signals:** the flags from `garmin_trends`, in plain words ("Overnight HRV 18% below your baseline").
+- **Fitness age:** Garmin's fitness age and how far it is from your age, with the achievable fitness age and
+  the change since the previous estimate. Hidden when Garmin has none for the account.
 - **Last activity:** name and type ("Strength training"), when ("Yesterday, 13:05"), distance, time, pace or speed,
   average heart rate, training load.
 - **Ask Hermes for my readiness brief** sends a prompt to the chat that is on screen (or a new one), so the agent
@@ -268,6 +295,20 @@ delete them whenever you like.
     newest 400 activities itself.
   - **Body Battery** comes as about 6 points per day, so highest and lowest come from the daily summary; the
     per-event breakdown the spec describes was not returned.
+  - **Heart-rate zones:** one `DEFAULT` set (lactate-threshold method, five floors plus the max heart rate; the
+    resting heart rate field was empty). Time in zone is only on activity-list items (`hrTimeInZone_1..5`,
+    seconds), not in the activity detail, so `garmin_activity` makes one extra list request for that day. The
+    five zones covered 70 to 97% of a strength session's duration; the rest (below zone 1 or no reading) is
+    reported as `outside_zones_min`. Bounds are your current settings; Garmin timed older activities with the
+    zones in effect then.
+  - **Fitness age** came back as a single object, not the array the spec documents, with four components
+    (`vigorousDaysAvg`, `vigorousMinutesAvg`, `rhr`, `bmi`). Garmin's `potentialAge` for the vigorous
+    components was above the current fitness age even though they were below target, so the plugin only shows
+    a "fitness age at target" when it is lower than the current one.
+  - **One night:** `/sleep-service/sleep/dailySleep` returned the same fields as the range endpoint, with no stage
+    timeline (no `sleepLevels`, also with extra parameters), so stage segments, time to deep sleep and the
+    length of each awakening are not available; sleep need, alignment, sleep heart rate and SpO2 were empty for
+    that watch. `/hrv-service/hrv/{date}` sent about 90 readings, one every 5 minutes.
   - Responses took 0.15 to 0.5 s; the token exchange about 1 s; a 15 KB activity file 0.2 s.
 - Garmin publishes no rate limit. The plugin retries 429 and 5xx responses with backoff.
 - Weight comes in grams (5-digit values for an adult) and is converted to kilograms.
@@ -298,7 +339,8 @@ The tests run without network or a Hermes checkout, against fixtures shaped from
 blueprint against Hermes' own validator.
 
 Layout: `hermes_garmin/client.py` (token exchange, retries, cache, chunking), `endpoints.py` (Garmin paths and
-range limits), `summaries.py` (raw DTO to compact dict), `trends.py` (baseline math), `reports.py` (multi-call
+range limits), `summaries.py` (raw DTO to compact dict), `trends.py` (baseline math), `training.py` (heart-rate zones,
+intensity distribution and fitness age), `reports.py` (multi-call
 overview and trends), and the Hermes surfaces in `tools.py`, `context.py` and `commands.py`. `panel.py` builds the
 Desktop panel's payloads from the same reports; `dashboard/plugin_api.py` serves them and `desktop/plugin.js`
 draws them. Install `fastapi` in the test environment to also run the routes over HTTP.

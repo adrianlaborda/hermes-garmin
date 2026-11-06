@@ -28,6 +28,10 @@ ACTIVITY_PAGE = 40
 # but answers HTTP 400 to others (``strength_training``): those are matched here over at most this
 # many of the newest activities.
 TYPE_SCAN_LIMIT = 400
+# Heart-rate zones change only when the user edits them or Garmin re-detects lactate threshold.
+ZONES_TTL_S = 12 * 3600.0
+# Garmin recomputes fitness age at most daily.
+FITNESS_AGE_TTL_S = 3600.0
 
 
 def _list(data: Any) -> list:
@@ -83,6 +87,19 @@ def steps(client: GarminClient, start: date, end: date, **kw) -> list:
     return client.get_range(
         lambda s, e: (f"/usersummary-service/stats/steps/daily/{s.isoformat()}/{e.isoformat()}", None),
         start, end, MAX_DAYS["steps"], **kw)
+
+
+def sleep_night(client: GarminClient, day: date, **kw) -> Optional[dict]:
+    """``DailySleepDTO`` for the night that ended on ``day``. Same fields as the range endpoint; the live
+    API sent no stage timeline (``sleepLevels``) and no sleep need in November 2026."""
+    data = client.get("/sleep-service/sleep/dailySleep", {"date": day.isoformat()}, **kw)
+    return data if isinstance(data, dict) and data else None
+
+
+def hrv_night(client: GarminClient, day: date, **kw) -> Optional[dict]:
+    """``HrvChartDTO``: the night's summary plus one reading every 5 minutes (about 90 a night)."""
+    data = client.get(f"/hrv-service/hrv/{day.isoformat()}", **kw)
+    return data if isinstance(data, dict) and data else None
 
 
 def heart_rate(client: GarminClient, day: date, **kw) -> Optional[dict]:
@@ -147,6 +164,23 @@ def _pages(client: GarminClient, params: dict, limit: int, **kw) -> list:
 
 def activity(client: GarminClient, activity_id: int, **kw) -> Optional[dict]:
     return client.get(f"/activity-service/activity/{activity_id}", **kw)
+
+
+def heart_rate_zones(client: GarminClient, **kw) -> list:
+    """``HeartRateZonesDTO`` per sport (``DEFAULT``, ``RUNNING``...): floors of zones 1-5 in bpm.
+    The live API returned one ``DEFAULT`` set; Garmin generates defaults when none are configured."""
+    kw.setdefault("ttl", ZONES_TTL_S)
+    return [z for z in _list(client.get("/biometric-service/heartRateZones/v2", **kw)) if isinstance(z, dict)]
+
+
+def fitness_age(client: GarminClient, day: date, **kw) -> Optional[dict]:
+    """``FitnessAgeDTO``, the latest as of ``day``. The spec documents an array; the live API answered
+    a single object (November 2026), so both are accepted."""
+    kw.setdefault("ttl", FITNESS_AGE_TTL_S)
+    data = client.get(f"/fitnessage-service/fitnessage/v2/{day.isoformat()}", **kw)
+    if isinstance(data, list):
+        data = next((item for item in data if isinstance(item, dict)), None)
+    return data if isinstance(data, dict) and data else None
 
 
 def activity_file_path(activity_id: int) -> str:

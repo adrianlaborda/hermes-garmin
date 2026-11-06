@@ -200,3 +200,19 @@ def test_today_ignores_a_quarter_hour_rounding_and_finished_days(routes):
     assert "5 h ago" in result["freshness_note"]
     from hermes_garmin.reports import latest_sync
     assert latest_sync(TODAY - timedelta(days=1), "2026-11-05T21:00", "2026-11-06T00:00:00.0") == "2026-11-05T21:00"
+
+
+def test_sleep_and_hrv_detail_for_one_night(routes, fake):
+    fake.routes["/sleep-service/sleep/dailySleep"] = fixture("daily_sleep")[0]
+    fake.routes[f"/hrv-service/hrv/{DAY}"] = fixture("hrv_night")
+    night = call("garmin_sleep", detail=True)
+    assert night["date"] == DAY and night["score"] == 82 and "below_good" not in night["detail"]
+    assert dict(fake.calls("/sleep-service/sleep/dailySleep")[0].url.params) == {"date": DAY}
+    ranged = call("garmin_sleep", detail=True, days=3)
+    assert DAY in ranged["detail_note"]
+    hrv = call("garmin_hrv", detail=True)
+    assert hrv["last_night_avg_ms"] == 50 and hrv["overnight"]["second_half_avg_ms"] == 57
+    fake.routes["/sleep-service/sleep/dailySleep"] = httpx.Response(204)
+    assert "No sleep recorded" in call("garmin_sleep", detail=True, date="yesterday")["note"]
+    fake.routes[f"/hrv-service/hrv/{TODAY - timedelta(days=1)}"] = {"userProfilePk": 42, "hrvReadings": []}
+    assert "No overnight HRV" in call("garmin_hrv", detail=True, date="yesterday")["note"]

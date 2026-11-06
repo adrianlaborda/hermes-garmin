@@ -1,0 +1,15 @@
+[
+  {
+    "trainingMethod": "LACTATE_THRESHOLD",
+    "restingHeartRateUsed": null,
+    "lactateThresholdHeartRateUsed": 165,
+    "zone1Floor": 100,
+    "zone2Floor": 120,
+    "zone3Floor": 140,
+    "zone4Floor": 155,
+    "zone5Floor": 170,
+    "maxHeartRateUsed": 188,
+    "restingHrAutoUpdateUsed": false,
+    "sport": "DEFAULT"
+  }
+]

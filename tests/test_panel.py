@@ -56,6 +56,7 @@ def install_history(fake) -> None:
         **{f"/hrv-service/hrv/daily/{TODAY - timedelta(days=n - 1)}/{DAY}":
            hrv({TODAY - timedelta(days=k) for k in range(n)}) for n in range(2, 32)},
         "/activitylist-service/activities/search/activities": fixture("activities"),
+        f"/fitnessage-service/fitnessage/v2/{DAY}": fixture("fitness_age"),
     })
 
 
@@ -190,6 +191,17 @@ def test_fresh_overview_skips_the_cache(history, runtime):
     assert len(history.requests) == before  # served from the client's cache
     panel.overview(runtime, fresh=True)
     assert len(history.requests) > before
+
+
+def test_overview_fitness_age_card(history, runtime, fake):
+    card = panel.overview(runtime)["fitness_age"]
+    assert card == {"value": 35.4, "display": "35.4", "unit": "years", "tone": "good", "age": 40,
+                    "badge": "−4.6", "badge_label": "4.6 years younger than your age of 40",
+                    "detail": "achievable 31.2 · −0.5 since the last update"}
+    fake.routes[f"/fitnessage-service/fitnessage/v2/{DAY}"] = httpx.Response(404)
+    out = panel.overview(runtime, fresh=True)
+    assert "fitness_age" not in out and "unavailable" not in out
+    assert panel.fitness_age_card({"invalidReason": "USER_EMPTY_AGE"}) is None
 
 
 def test_steps_goal_met_is_good():

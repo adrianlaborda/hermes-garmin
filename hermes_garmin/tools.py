@@ -8,7 +8,7 @@ from pathlib import Path
 from statistics import mean
 from typing import Any, Callable
 
-from . import endpoints, reports, summaries
+from . import endpoints, reports, summaries, training
 from .client import ApiError, GarminError
 from .dates import ArgError, parse_day, resolve_range
 from .runtime import RUNTIME
@@ -79,9 +79,19 @@ def today(args: dict) -> dict:
     return reports.today(RUNTIME.client(), day)
 
 
+def _one_night(args: dict, start, end) -> dict:
+    return {} if start == end else {"detail_note": f"detail covers one night: {end}, the last day of the range."}
+
+
 @_tool
 def sleep(args: dict) -> dict:
     start, end = _range(args)
+    if args.get("detail"):
+        raw = endpoints.sleep_night(RUNTIME.client(), end)
+        if not raw or not raw.get("sleepTimeSeconds"):
+            return {"date": end.isoformat(), "note": f"No sleep recorded for the night ending {end}."}
+        result = {**summaries.sleep(raw), "detail": summaries.sleep_detail(raw), **_one_night(args, start, end)}
+        return _with_raw(result, args, raw)
     rows = _dicts(endpoints.sleep(RUNTIME.client(), start, end))
     nights = summaries.sorted_by_date(summaries.sleep(r) for r in rows)
     result: dict = {"nights": nights}
@@ -97,6 +107,15 @@ def sleep(args: dict) -> dict:
 @_tool
 def hrv(args: dict) -> dict:
     start, end = _range(args)
+    if args.get("detail"):
+        raw = endpoints.hrv_night(RUNTIME.client(), end)
+        summary = raw.get("hrvSummary") if raw and isinstance(raw.get("hrvSummary"), dict) else None
+        if not raw or (not summary and not raw.get("hrvReadings")):
+            return {"date": end.isoformat(), "note": f"No overnight HRV for the night ending {end} (it needs a "
+                    "compatible watch worn during sleep)."}
+        result = {**(summaries.hrv(summary) if summary else {"date": end.isoformat()}),
+                  "overnight": summaries.hrv_night(raw), **_one_night(args, start, end)}
+        return _with_raw(result, args, raw)
     rows = _dicts(endpoints.hrv(RUNTIME.client(), start, end))
     result: dict = {"days": summaries.sorted_by_date(summaries.hrv(r) for r in rows)}
     if not rows:
@@ -186,7 +205,9 @@ def activity(args: dict) -> dict:
     raw = endpoints.activity(RUNTIME.client(), _activity_id(args))
     if not isinstance(raw, dict):
         return {"error": "Garmin returned no data for this activity."}
-    return _with_raw(summaries.activity_detail(raw), args, raw)
+    result = summaries.activity_detail(raw)
+    result.update(reports.activity_zones(RUNTIME.client(), raw))
+    return _with_raw(result, args, raw)
 
 
 def _download_dir() -> Path:
@@ -239,6 +260,22 @@ def trends(args: dict) -> dict:
     return reports.trend_report(RUNTIME.client(), as_of, days, flag_pct=max(1.0, threshold))
 
 
+@_tool
+def training_load(args: dict) -> dict:
+    days = max(1, min(int(args.get("days") or 7), 28))
+    today_ = RUNTIME.today()
+    as_of = min(parse_day(args["as_of"], today_), today_) if args.get("as_of") else today_
+    return reports.training_load(RUNTIME.client(), as_of, days, ends_today=as_of == today_)
+
+
+@_tool
+def fitness_age(args: dict) -> dict:
+    day = parse_day(args.get("date") or "today", RUNTIME.today())
+    raw = endpoints.fitness_age(RUNTIME.client(), day)
+    result = {"as_of": day.isoformat(), **training.fitness_age(raw)}
+    return _with_raw(result, args, raw)
+
+
 # -- registration table ---------------------------------------------------------------------------
 
 TOOLS: tuple[tuple[str, dict, Callable[..., str], str], ...] = (
@@ -254,15 +291,24 @@ TOOLS: tuple[tuple[str, dict, Callable[..., str], str], ...] = (
     ("garmin_sleep", _schema(
         "garmin_sleep",
         "Sleep per night: total, stages (deep/light/REM/awake), sleep score, bedtime and wake time, overnight "
-        "heart rate, respiration, SpO2. A night is filed under the date the user woke up. Ranges up to 93 days.",
-        {**_RANGE, "raw": _RAW}), sleep, "😴"),
+        "heart rate, respiration, SpO2. A night is filed under the date the user woke up. Ranges up to 93 days. "
+        "detail: true for one night explains the score: each component (duration, deep/light/REM %, awakenings, "
+        "restlessness, sleep stress) with Garmin's rating and optimal range, the ones rated below GOOD, the "
+        "respiration range, and sleep need or naps when Garmin has them. Garmin gives no stage timeline.",
+        {**_RANGE, "detail": {"type": "boolean", "description": "One night (date, or the last day of a range) "
+                              "in detail. Use for 'why did I sleep badly'; pair with garmin_hrv detail."},
+         "raw": _RAW}), sleep, "😴"),
     ("garmin_hrv", _schema(
         "garmin_hrv",
         "Overnight heart rate variability (RMSSD, ms) per day with Garmin's HRV status (BALANCED, UNBALANCED, "
         "LOW, POOR) and the user's personal balanced range. The status rates the 7-day average, not last "
         "night: last_night_vs_range tells where the single night falls. HRV is individual: compare with the "
-        "user's own baseline, not population norms.",
-        {**_RANGE, "raw": _RAW}), hrv, "💓"),
+        "user's own baseline, not population norms. detail: true for one night adds the overnight curve: "
+        "30-minute averages (local time) from Garmin's 5-minute readings, first vs second half of the night and "
+        "the lowest and highest window.",
+        {**_RANGE, "detail": {"type": "boolean", "description": "One night (date, or the last day of a range) "
+                              "with the overnight HRV curve."},
+         "raw": _RAW}), hrv, "💓"),
     ("garmin_body_battery", _schema(
         "garmin_body_battery",
         "Body Battery energy estimate (0-100) per day: charged, drained, highest, lowest and latest (from a "
@@ -299,7 +345,8 @@ TOOLS: tuple[tuple[str, dict, Callable[..., str], str], ...] = (
     ("garmin_activity", _schema(
         "garmin_activity",
         "Full detail of one activity by ID: pace, heart rate, cadence, power, running dynamics, training "
-        "effect and load, stamina, perceived effort, temperature and split summaries.",
+        "effect and load, stamina, perceived effort, temperature, split summaries, and time in each heart-rate "
+        "zone (minutes, % of zoned time and the zone's bpm range, hr_zones).",
         {"activity_id": _ID, "raw": _RAW}, ("activity_id",)), activity, "📊"),
     ("garmin_activity_fit", _schema(
         "garmin_activity_fit",
@@ -322,4 +369,23 @@ TOOLS: tuple[tuple[str, dict, Callable[..., str], str], ...] = (
          "threshold_pct": {"type": "number", "description": "Minimum % change to flag, default 10."},
          "as_of": {"type": "string", "description": "Analyse as of this day instead of today (YYYY-MM-DD)."}}),
      trends, "📈"),
+    ("garmin_training_load", _schema(
+        "garmin_training_load",
+        "Training intensity by heart-rate zone: minutes in zones 1-5 summed over the activities of the last N "
+        "days (default 7) with each zone's bpm range, the share of easy (1-2), moderate (3) and hard (4-5) time, "
+        "the same against the weekly average of the 4 weeks before, time per activity type, intensity minutes "
+        "vs the weekly goal, and flags such as 'Zone 4-5 time 2.1x your 4-week weekly average' or '92% of time "
+        "in zones 1-2'. Use for 'how hard did I train this week', intensity distribution, polarized or "
+        "zone-2 training, or a sudden jump in load. Daily recovery metrics are in garmin_trends.",
+        {"days": {"type": "integer", "minimum": 1, "maximum": 28, "description": "Window, default 7."},
+         "as_of": {"type": "string", "description": "Last day of the window instead of today (YYYY-MM-DD)."}}),
+     training_load, "🔥"),
+    ("garmin_fitness_age", _schema(
+        "garmin_fitness_age",
+        "Garmin's fitness age against the user's actual age, the previous and best achievable fitness age, and "
+        "the inputs behind it (vigorous days and vigorous minutes per week, resting heart rate, BMI or body fat), "
+        "each with Garmin's target and, in to_improve, the ones to work on first. Use for 'what's my fitness "
+        "age', 'how fit am I for my age' or what would improve it.",
+        {"date": {**_DATE, "description": "The latest fitness age as of this day (YYYY-MM-DD). Default today."},
+         "raw": _RAW}), fitness_age, "🎯"),
 )
