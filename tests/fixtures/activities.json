@@ -1,0 +1,143 @@
+[
+  {
+    "ownerId": 42,
+    "ownerDisplayName": "private-name",
+    "ownerFullName": "Private Person",
+    "ownerProfileImageUrlSmall": "https://example.invalid/a.png",
+    "startLatitude": 40.4168,
+    "startLongitude": -3.7038,
+    "endLatitude": 40.42,
+    "endLongitude": -3.7,
+    "activityId": 21000000002,
+    "activityName": "Morning Run",
+    "startTimeLocal": "2026-11-05 07:02:11",
+    "startTimeGMT": "2026-11-05 06:02:11",
+    "activityType": {
+      "typeId": 1,
+      "typeKey": "running",
+      "parentTypeId": 17
+    },
+    "eventType": {
+      "typeId": 9,
+      "typeKey": "uncategorized"
+    },
+    "distance": 10021.4,
+    "duration": 3120.0,
+    "movingDuration": 3100.0,
+    "elapsedDuration": 3180.0,
+    "elevationGain": 85.0,
+    "averageSpeed": 3.212,
+    "averageHR": 152.0,
+    "maxHR": 171.0,
+    "calories": 702.0,
+    "aerobicTrainingEffect": 3.4,
+    "anaerobicTrainingEffect": 1.2,
+    "activityTrainingLoad": 142.6,
+    "vO2MaxValue": 52.0,
+    "hrTimeInZone_1": 120.0,
+    "hrTimeInZone_2": 600.0,
+    "hrTimeInZone_3": 1500.0,
+    "hrTimeInZone_4": 840.0,
+    "hrTimeInZone_5": 60.0,
+    "beginTimestamp": 1793858531000,
+    "isPR": false
+  },
+  {
+    "ownerId": 42,
+    "ownerDisplayName": "private-name",
+    "ownerFullName": "Private Person",
+    "ownerProfileImageUrlSmall": "https://example.invalid/a.png",
+    "startLatitude": 40.4168,
+    "startLongitude": -3.7038,
+    "endLatitude": 40.42,
+    "endLongitude": -3.7,
+    "activityId": 21000000001,
+    "activityName": "Evening Ride",
+    "startTimeLocal": "2026-11-03 18:30:00",
+    "activityType": {
+      "typeId": 2,
+      "typeKey": "road_biking",
+      "parentTypeId": 17
+    },
+    "distance": 40250.0,
+    "duration": 5400.0,
+    "averageSpeed": 7.45,
+    "avgPower": 182.0,
+    "averageHR": 138.0
+  },
+  {
+    "ownerId": 42,
+    "ownerDisplayName": "private-name",
+    "ownerFullName": "Private Person",
+    "activityId": 21000000000,
+    "activityName": "Gym",
+    "startTimeLocal": "2026-11-03 18:30:05",
+    "startTimeGMT": "2026-11-03 17:30:05",
+    "endTimeGMT": "2026-11-03 18:20:10",
+    "activityType": {
+      "typeId": 13,
+      "typeKey": "strength_training",
+      "parentTypeId": 29
+    },
+    "eventType": {
+      "typeId": 9,
+      "typeKey": "uncategorized"
+    },
+    "sportTypeId": 4,
+    "distance": 0.0,
+    "duration": 3005.4,
+    "elapsedDuration": 3005.4,
+    "movingDuration": 1702.1,
+    "averageSpeed": 0.0,
+    "averageHR": 118.0,
+    "maxHR": 151.0,
+    "calories": 380.0,
+    "aerobicTrainingEffect": 2.4,
+    "anaerobicTrainingEffect": 0.8,
+    "activityTrainingLoad": 41.0,
+    "hrTimeInZone_1": 1500.0,
+    "hrTimeInZone_2": 1000.0,
+    "hrTimeInZone_3": 300.0,
+    "hrTimeInZone_4": 20.0,
+    "hrTimeInZone_5": 0.0,
+    "beginTimestamp": 1793727005000,
+    "isPR": false,
+    "pr": false,
+    "activeSets": 12,
+    "totalSets": 12,
+    "totalReps": 110,
+    "lapCount": 12,
+    "manufacturer": "GARMIN",
+    "summarizedExerciseSets": [
+      {
+        "category": "SQUAT",
+        "reps": 40,
+        "volume": 0,
+        "duration": 600.0,
+        "sets": 4,
+        "maxWeight": 0
+      },
+      {
+        "category": "PULL_UP",
+        "reps": 30,
+        "volume": 0,
+        "duration": 500.0,
+        "sets": 4,
+        "maxWeight": 0
+      },
+      {
+        "category": "UNKNOWN",
+        "reps": 40,
+        "volume": 0,
+        "duration": 500.0,
+        "sets": 4,
+        "maxWeight": 0
+      }
+    ],
+    "splitSummaries": [],
+    "privacy": {
+      "typeId": 3,
+      "typeKey": "subscribers"
+    }
+  }
+]

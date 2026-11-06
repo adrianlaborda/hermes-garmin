@@ -1,0 +1,70 @@
+{
+  "activityId": 21000000002,
+  "activityName": "Morning Run",
+  "userProfileId": 42,
+  "activityUUID": {
+    "uuid": "6f1c2e3a-0000-4000-8000-000000000000"
+  },
+  "locationName": "Madrid",
+  "activityTypeDTO": {
+    "typeId": 1,
+    "typeKey": "running",
+    "parentTypeId": 17
+  },
+  "eventTypeDTO": {
+    "typeId": 9,
+    "typeKey": "uncategorized"
+  },
+  "timeZoneUnitDTO": {
+    "timeZone": "Europe/Madrid"
+  },
+  "metadataDTO": {
+    "manufacturer": "GARMIN",
+    "fileFormat": {
+      "formatId": 7,
+      "formatKey": "fit"
+    },
+    "lapCount": 10
+  },
+  "summaryDTO": {
+    "startTimeLocal": "2026-11-05T07:02:11.0",
+    "startTimeGMT": "2026-11-05T06:02:11.0",
+    "startLatitude": 40.4168,
+    "startLongitude": -3.7038,
+    "distance": 10021.4,
+    "duration": 3120.0,
+    "movingDuration": 3100.0,
+    "elapsedDuration": 3180.0,
+    "elevationGain": 85.0,
+    "elevationLoss": 83.0,
+    "averageSpeed": 3.212,
+    "averageHR": 152.0,
+    "maxHR": 171.0,
+    "averageRunCadence": 172.4,
+    "trainingEffect": 3.4,
+    "anaerobicTrainingEffect": 1.2,
+    "trainingEffectLabel": "TEMPO",
+    "activityTrainingLoad": 142.6,
+    "groundContactTime": 248.0,
+    "strideLength": 112.3,
+    "verticalOscillation": 8.9,
+    "recoveryHeartRate": 128,
+    "beginPotentialStamina": 100.0,
+    "endPotentialStamina": 61.0,
+    "directWorkoutRpe": 60,
+    "steps": 9100,
+    "moderateIntensityMinutes": 10,
+    "vigorousIntensityMinutes": 40,
+    "differenceBodyBattery": -14,
+    "averageMovingSpeed": 3.233,
+    "minHR": 96.0
+  },
+  "splitSummaries": [
+    {
+      "splitType": "INTERVAL_ACTIVE",
+      "noOfSplits": 1,
+      "distance": 10021.4,
+      "duration": 3120.0
+    }
+  ]
+}

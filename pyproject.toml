@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hermes-garmin"
+version = "0.1.0"
+description = "Garmin Connect Personal API plugin for Hermes Agent (unofficial)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["httpx>=0.27,<0.29"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10", "pyyaml>=6,<7", "fastapi>=0.110,<1"]
+
+[tool.setuptools]
+packages = ["hermes_garmin"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

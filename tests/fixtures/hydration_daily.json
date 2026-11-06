@@ -1,0 +1,15 @@
+[
+  {
+    "userId": 42,
+    "calendarDate": "2026-11-05",
+    "valueInML": 2250.0,
+    "goalInML": 2500.0,
+    "sweatLossInML": 610.0
+  },
+  {
+    "userId": 42,
+    "calendarDate": "2026-11-06",
+    "valueInML": 0.0,
+    "goalInML": 2500.0
+  }
+]
