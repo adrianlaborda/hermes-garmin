@@ -46,8 +46,7 @@ class RecordingContext:
         self.unload.append(callback)
 
 
-@pytest.fixture
-def ctx():
+def _load_and_register():
     spec = importlib.util.spec_from_file_location("hermes_plugins_garmin", ROOT / "__init__.py",
                                                   submodule_search_locations=[str(ROOT)])
     module = importlib.util.module_from_spec(spec)
@@ -56,6 +55,11 @@ def ctx():
     recording = RecordingContext()
     module.register(recording)
     return recording
+
+
+@pytest.fixture
+def ctx():
+    return _load_and_register()
 
 
 def test_registrations_match_the_manifest(ctx):
@@ -81,23 +85,110 @@ def test_tool_schemas(ctx):
         assert "**_kwargs" in str(inspect.signature(tool["handler"]))
 
 
+class FakeSecretScope:
+    """``agent.secret_scope`` and ``hermes_constants`` as Hermes exposes them to plugins: a bound
+    scope (or none), ``get_secret`` with its fail-closed raise, and per-home ``.env`` scopes."""
+
+    def __init__(self, monkeypatch) -> None:
+        self.bound = None          # the installed scope mapping, None when no scope is bound
+        self.environ = {}          # the process env as it was at launch
+        self.multiplex = True      # a multi-profile host: unscoped reads fail closed
+        self.homes = {}            # home -> what build_profile_secret_scope(home) returns
+        self.home = "/home/hermes/.hermes"
+        self.built = []
+        module = types.ModuleType("agent.secret_scope")
+        module.get_secret = self.get_secret
+        module.current_secret_scope = lambda: self.bound
+        module.build_profile_secret_scope = self.build
+        constants = types.ModuleType("hermes_constants")
+        constants.get_hermes_home = lambda: Path(self.home)
+        agent = types.ModuleType("agent")
+        agent.secret_scope = module
+        monkeypatch.setitem(sys.modules, "agent", agent)
+        monkeypatch.setitem(sys.modules, "agent.secret_scope", module)
+        monkeypatch.setitem(sys.modules, "hermes_constants", constants)
+
+    def get_secret(self, name, default=None):
+        if self.bound is not None:
+            return self.bound.get(name, default if self.multiplex else self.environ.get(name, default))
+        if self.multiplex:
+            raise RuntimeError("UnscopedSecretError: no profile secret scope while multiplexing")
+        return self.environ.get(name, default)
+
+    def build(self, home):
+        self.built.append(str(home))
+        if str(home) == "broken":
+            raise OSError("unreadable")
+        return dict(self.homes.get(str(home), {}))
+
+
 def test_key_is_read_through_get_secret(ctx, monkeypatch):
-    secrets = {}
-    scope = types.ModuleType("agent.secret_scope")
-    scope.get_secret = lambda name, default=None: secrets.get(name, default)
-    monkeypatch.setitem(sys.modules, "agent", types.ModuleType("agent"))
-    monkeypatch.setitem(sys.modules, "agent.secret_scope", scope)
+    fake = FakeSecretScope(monkeypatch)
+    fake.bound = {}
     check = next(iter(ctx.tools.values()))["check_fn"]
     assert check() is False
-    secrets["GARMIN_PERSONAL_API_KEY"] = "  "
+    fake.bound["GARMIN_PERSONAL_API_KEY"] = "  "
     assert check() is False
-    secrets["GARMIN_PERSONAL_API_KEY"] = API_KEY
+    fake.bound["GARMIN_PERSONAL_API_KEY"] = API_KEY
     assert check() is True
+    assert fake.built == []  # a scoped read never rebuilds anything
 
-    def unscoped(name, default=None):
-        raise RuntimeError("no profile scope")
-    scope.get_secret = unscoped
-    assert check() is False
+
+def test_a_bound_scope_is_authoritative(ctx, monkeypatch):
+    fake = FakeSecretScope(monkeypatch)
+    fake.bound = {}
+    fake.homes[fake.home] = {"GARMIN_PERSONAL_API_KEY": API_KEY}
+    check = next(iter(ctx.tools.values()))["check_fn"]
+    assert check() is False and fake.built == []
+
+
+def test_slash_command_without_a_scope_reads_the_bound_homes_scope(runtime, monkeypatch):
+    """Desktop's ``command.dispatch`` binds the session's home but no secret scope: on a
+    multi-profile host ``get_secret`` raises, so ``/garmin`` said "no key" right after a save."""
+    from hermes_garmin import runtime as runtime_mod
+
+    monkeypatch.setattr(runtime, "_key_provider", runtime_mod.read_api_key)
+    fake = FakeSecretScope(monkeypatch)
+    fake.homes[fake.home] = {"GARMIN_PERSONAL_API_KEY": f" {API_KEY} "}
+    fake.homes["/home/hermes/.hermes/profiles/other"] = {}
+    assert runtime_mod.read_api_key() == API_KEY and fake.built == [fake.home]
+    assert "API key: set" in commands.handle("status")
+    fake.home = "/home/hermes/.hermes/profiles/other"  # a secondary profile's session
+    assert runtime_mod.read_api_key() is None  # never the launch profile's key
+    assert "API key: not set" in commands.handle("status")
+    fake.home = "broken"
+    assert runtime_mod.read_api_key() is None
+
+
+def test_single_profile_host_sees_a_key_saved_after_launch(monkeypatch):
+    from hermes_garmin import runtime
+
+    fake = FakeSecretScope(monkeypatch)
+    fake.multiplex = False
+    assert runtime.read_api_key() is None
+    fake.homes[fake.home] = {"GARMIN_PERSONAL_API_KEY": API_KEY}  # saved to .env, env still stale
+    assert runtime.read_api_key() == API_KEY
+    fake.environ["GARMIN_PERSONAL_API_KEY"] = "env-key"  # systemd / op run injection still wins
+    assert runtime.read_api_key() == "env-key"
+
+
+def test_outside_hermes_there_is_no_key(monkeypatch):
+    from hermes_garmin import runtime
+
+    monkeypatch.setitem(sys.modules, "agent", None)
+    assert runtime.read_api_key() is None
+
+
+def test_key_check_is_not_cached_by_hermes(monkeypatch):
+    marked = []
+    registry = types.ModuleType("tools.registry")
+    registry.no_cache_check_fn = lambda fn: marked.append(fn) or fn
+    monkeypatch.setitem(sys.modules, "tools", types.ModuleType("tools"))
+    monkeypatch.setitem(sys.modules, "tools.registry", registry)
+    recording = _load_and_register()
+    from hermes_garmin.runtime import key_configured
+    assert marked and all(t["check_fn"] in marked for t in recording.tools.values())
+    assert marked[0].__name__ == key_configured.__name__
 
 
 def test_hook_accepts_hermes_kwargs(ctx):

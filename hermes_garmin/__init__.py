@@ -19,6 +19,17 @@ MORNING_BRIEF_PROMPT = (
 )
 
 
+def _uncached_check(fn) -> None:
+    """Hermes caches a ``check_fn`` verdict for 30 s and drops it on no settings save, so a "no key"
+    probed just before the user saves one would hide the tools until it expires. The check is a
+    local secret lookup (no network), the kind Hermes' ``no_cache_check_fn`` exists for."""
+    try:
+        from tools.registry import no_cache_check_fn
+        no_cache_check_fn(fn)
+    except Exception:  # outside Hermes, or a Hermes without the marker: keep the cached verdict
+        pass
+
+
 def register(ctx) -> None:
     # No network or attribute reads beyond get_config here: register() also runs in validators.
     from .commands import handle
@@ -27,6 +38,7 @@ def register(ctx) -> None:
     from .tools import TOOLS
 
     RUNTIME.bind(ctx.get_config)
+    _uncached_check(key_configured)
     for name, schema, handler, emoji in TOOLS:
         ctx.register_tool(name=name, toolset=TOOLSET, schema=schema, handler=handler,
                           check_fn=key_configured, requires_env=["GARMIN_PERSONAL_API_KEY"], emoji=emoji)

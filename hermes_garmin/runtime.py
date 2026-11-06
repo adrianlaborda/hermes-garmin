@@ -1,7 +1,7 @@
 """Plugin settings, the API key route and the shared client.
 
-The key is read through Hermes' ``get_secret`` on every request, which honours the active
-profile; it is never read from files or cached here.
+The key is read through Hermes' secret-scope API on every request, which honours the active
+profile; the plugin never parses ``.env`` itself and never caches the key.
 """
 
 from __future__ import annotations
@@ -46,13 +46,37 @@ class ZoneChoice(NamedTuple):
 ConfigGetter = Callable[[str, Any], Any]
 
 
+def _clean(value: Any) -> Optional[str]:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
 def read_api_key() -> Optional[str]:
+    """The key from the active profile's secret scope.
+
+    Agent turns, cron fires and the dashboard bind that scope. A slash command dispatched from
+    Desktop or the TUI (``command.dispatch``) binds only the session's Hermes home, so there
+    ``get_secret`` raises on a multi-profile host (fail closed), or on a single-profile one reads
+    the process env as it was at launch, which lacks a key saved later. Only when NO scope is
+    bound is the profile's scope rebuilt, through Hermes' own ``build_profile_secret_scope``, for
+    the home Hermes bound for the call (``get_hermes_home``): the profile whose config and skills
+    that command already resolves against. A bound scope stays authoritative."""
     try:
-        from agent.secret_scope import get_secret
-        value = get_secret(KEY_ENV)
-    except Exception:  # outside Hermes, or no profile scope while multiplexing: treat as unset
+        from agent import secret_scope
+    except Exception:  # outside Hermes
         return None
-    return value.strip() if value and value.strip() else None
+    try:
+        value = _clean(secret_scope.get_secret(KEY_ENV))
+    except Exception:  # UnscopedSecretError: no profile scope while multiplexing
+        value = None
+    if value is not None:
+        return value
+    try:
+        if secret_scope.current_secret_scope() is not None:
+            return None
+        from hermes_constants import get_hermes_home
+        return _clean(secret_scope.build_profile_secret_scope(get_hermes_home()).get(KEY_ENV))
+    except Exception:
+        return None
 
 
 def key_configured() -> bool:
