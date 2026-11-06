@@ -151,8 +151,14 @@ then the daily summary, sleep, HRV and latest activity, in parallel, with no ret
 most 3 seconds; if the thread is slower it keeps running in the background until its requests finish or hit
 the 15-second HTTP timeout (about 30 seconds at worst, token exchange included), and its result warms the cache
 for the next session. One fetch runs at a time, the line is reused for 30 minutes, and after a failure no
-fetch is tried for 10 minutes. With the setting off, no thread is ever started. The plugin starts no other
-background process.
+fetch is tried for 10 minutes. With the setting off, no thread is ever started.
+
+The only other background work is the **time zone lookup**. While the `timezone` setting is `auto` (the
+default) and a key is set, the first request that needs "today" reads your time zone from your Garmin profile
+settings on a short-lived daemon thread named `garmin-zone` (one read-only call, no retries). The request waits
+for it at most 2 seconds and otherwise falls back to Hermes' time zone, then the server's. The answer is
+reused for 12 hours, and after a failure no lookup is tried for 10 minutes. Picking a zone in the setting
+turns the lookup off. The plugin starts no other background process.
 
 It is **off by default** because it sends a summary of your health data to your model provider in every new
 session, including ones that have nothing to do with health. Turn it on in Desktop **Settings > Plugins >
