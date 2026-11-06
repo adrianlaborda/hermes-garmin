@@ -29,8 +29,8 @@
   "summaryDTO": {
     "startTimeLocal": "2026-11-05T07:02:11.0",
     "startTimeGMT": "2026-11-05T06:02:11.0",
-    "startLatitude": 40.4168,
-    "startLongitude": -3.7038,
+    "startLatitude": 12.3456,
+    "startLongitude": -45.6789,
     "distance": 10021.4,
     "duration": 3120.0,
     "movingDuration": 3100.0,

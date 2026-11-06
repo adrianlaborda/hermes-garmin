@@ -135,7 +135,7 @@ def test_activity_list_item_is_compact_and_private():
     assert ride["avg_speed_kmh"] == 26.8 and ride["avg_power_w"] == 182
     assert run["type_label"] == "Running" and ride["type_label"] == "Road biking"
     text = json.dumps([run, ride])
-    for private in ("Latitude", "40.41", "Private Person", "private-name", "example.invalid"):
+    for private in ("Latitude", "12.34", "Private Person", "private-name", "example.invalid"):
         assert private not in text
 
 
@@ -147,7 +147,7 @@ def test_activity_detail():
     assert detail["intensity_minutes"] == 90
     assert detail["splits"] == [{"type": "INTERVAL_ACTIVE", "count": 1, "distance_km": 10.02,
                                  "duration": "0:52:00"}]
-    assert "40.41" not in json.dumps(detail)
+    assert "12.34" not in json.dumps(detail)
 
 
 # -- single-night detail ----------------------------------------------------------------------------
