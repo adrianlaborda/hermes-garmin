@@ -23,11 +23,11 @@ jobs:
       matrix:
         python-version: ["3.11", "3.13"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           path: plugin
           persist-credentials: false
@@ -59,7 +59,7 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Check out Hermes at that tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: NousResearch/hermes-agent
           ref: ${{ steps.hermes.outputs.tag }}
@@ -72,7 +72,7 @@ jobs:
         id: uv
         run: echo "version=$(jq -r '.packages.uv.version' hermes-agent/pm/lock.json)" >> "$GITHUB_OUTPUT"
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v10
         with:
           version: ${{ steps.uv.outputs.version }}
 
