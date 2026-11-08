@@ -1,5 +1,12 @@
 # Garmin Connect for Hermes
 
+[![CI](https://github.com/adrianlaborda/hermes-garmin/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/adrianlaborda/hermes-garmin/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/adrianlaborda/hermes-garmin)](https://github.com/adrianlaborda/hermes-garmin/releases/latest)
+[![Hermes](https://img.shields.io/badge/Hermes-%E2%89%A50.22.2-blue)](https://github.com/NousResearch/hermes-agent)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
+[![Hermes plugin catalog](https://img.shields.io/badge/Hermes%20catalog-garmin--connect-8a2be2)](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/garmin-connect.yaml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 Your Garmin data in [Hermes Agent](https://github.com/NousResearch/hermes-agent): sleep, HRV, Body Battery,
 stress, steps, heart rate, activities, heart-rate zones, fitness age and weight, read through Garmin's official
 [Personal API](https://developer.garmin.com/gc-developer-program/personal/personal-api/). No password, no
